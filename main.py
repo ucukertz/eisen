@@ -8,28 +8,16 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.checkbox import CheckBox
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.popup import Popup
+from kivy.uix.widget import Widget
 from kivy.uix.actionbar import ActionBar, ActionView, ActionPrevious, ActionButton
 from kivy.properties import ObjectProperty, ListProperty, StringProperty, BooleanProperty
 from kivy.lang import Builder
+from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.config import Config
 from kivy.utils import get_color_from_hex, platform
 import json
 import os
-
-if platform in ('android', 'ios'):
-    from kivy.metrics import Metrics
-
-    screen_density = Metrics.density
-    screen_width = int(Window.system_size[0] / screen_density)
-    screen_height = int(Window.system_size[1] / screen_density)
-    Config.set('graphics', 'width', str(screen_width))
-    Config.set('graphics', 'height', str(screen_height))
-    Window.size = (screen_width, screen_height)
-else:
-    Config.set('graphics', 'width', '360')
-    Config.set('graphics', 'height', '640')
-    Window.size = (360, 640)
 
 MATRIX_COLORS = {
     'urgent_important': get_color_from_hex('#2ecc71'),
@@ -156,8 +144,7 @@ Builder.load_string('''
                 ActionPrevious:
                     app_icon: ''
                     title: 'Eisenhower Matrix'
-                    with_previous: True
-                    title_font_size: Window.height * 0.055 if Window.height < 800 else Window.height * 0.045
+                    title_font_size: Window.height * 0.075 if Window.height < 800 else Window.height * 0.055
                 ActionButton:
                     text: 'Projects'
                     font_size: Window.height * 0.03 if Window.height < 800 else Window.height * 0.025
@@ -195,7 +182,7 @@ Builder.load_string('''
                 ActionPrevious:
                     app_icon: ''
                     title: 'Projects'
-                    title_font_size: Window.height * 0.035 if Window.height < 800 else Window.height * 0.03
+                    title_font_size: Window.height * 0.075 if Window.height < 800 else Window.height * 0.055
                     on_press: root.manager.current = 'main'
                 ActionButton:
                     text: 'Add Project'
@@ -215,11 +202,13 @@ Builder.load_string('''
         ActionBar:
             size_hint_y: 0.1
             padding: ['10dp','0dp', '0dp', '0dp']
+            background_color: root.matrix_color
+            background_image: ''
             ActionView:
                 ActionPrevious:
                     app_icon: ''
                     title: root.matrix_name
-                    title_font_size: Window.height * 0.035 if Window.height < 800 else Window.height * 0.03
+                    title_font_size: Window.height * 0.075 if Window.height < 800 else Window.height * 0.055
                     on_press: root.manager.current = 'main'
                 ActionButton:
                     id: delete_button
@@ -255,7 +244,7 @@ Builder.load_string('''
                 ActionPrevious:
                     app_icon: ''
                     title: root.task_name
-                    title_font_size: Window.height * 0.035 if Window.height < 800 else Window.height * 0.03
+                    title_font_size: Window.height * 0.075 if Window.height < 800 else Window.height * 0.055
                     on_press: root.manager.current = 'matrix'
                 ActionButton:
                     id: delete_button
@@ -322,7 +311,7 @@ Builder.load_string('''
                     app_icon: ''
                     id: title_text
                     title: 'Summary'
-                    title_font_size: Window.height * 0.035 if Window.height < 800 else Window.height * 0.03
+                    title_font_size: Window.height * 0.075 if Window.height < 800 else Window.height * 0.055
                     on_press: root.manager.current = 'main'
         ScrollView:
             BoxLayout:
@@ -383,11 +372,20 @@ class Task:
 class MainMenuScreen(Screen):
     current_project = ObjectProperty(None)
 
-    def on_enter(self):
+    def __init__(self, **kwargs):
+        super(MainMenuScreen, self).__init__(**kwargs)
+        Clock.schedule_once(self.on_enter)
+
+    def on_enter(self, *args):
         if not self.current_project and App.get_running_app().projects:
             self.current_project = App.get_running_app().projects[0]
         self.update_project_name()
         self.update_matrix_grid()
+
+        Clock.schedule_once(self.force_redraw, 0.1)
+
+    def force_redraw(self, dt):
+        Window.update_viewport()
 
     def update_project_name(self):
         if self.current_project:
@@ -433,11 +431,11 @@ class ProjectScreen(Screen):
         app = App.get_running_app()
         for project in app.projects:
             project_box = BoxLayout(orientation='horizontal', size_hint_y=None, height='50dp')
-            project_btn = Button(text=project.name, size_hint_x=0.6)
+            project_btn = Button(text=project.name, size_hint_x=0.7)
             project_btn.bind(on_press=lambda instance, p=project: self.select_project(p))
             rename_btn = Button(text='Rename', size_hint_x=0.2)
             rename_btn.bind(on_press=lambda instance, p=project: self.rename_project(p))
-            delete_btn = Button(text='Delete', size_hint_x=0.2)
+            delete_btn = Button(text='X', size_hint_x=0.1)
             delete_btn.bind(on_press=lambda instance, p=project: self.delete_project(p))
             project_box.add_widget(project_btn)
             project_box.add_widget(rename_btn)
@@ -452,7 +450,13 @@ class ProjectScreen(Screen):
 
     def add_project(self):
         popup_content = BoxLayout(orientation='vertical', padding='10dp', spacing='10dp')
+
+        top_section = BoxLayout(orientation='vertical', size_hint_y=None, height='60dp')
         input_field = TextInput(hint_text='Project name', multiline=False, size_hint_y=None, height='40dp')
+        top_section.add_widget(input_field)
+
+        spacer = Widget(size_hint_y=1)
+
         buttons_box = BoxLayout(size_hint_y=None, height='50dp')
         cancel_btn = Button(text='Cancel')
         cancel_btn.bind(on_press=lambda instance: popup.dismiss())
@@ -460,7 +464,9 @@ class ProjectScreen(Screen):
         add_btn.bind(on_press=lambda instance: self.create_project(input_field.text, popup))
         buttons_box.add_widget(cancel_btn)
         buttons_box.add_widget(add_btn)
-        popup_content.add_widget(input_field)
+
+        popup_content.add_widget(top_section)
+        popup_content.add_widget(spacer)
         popup_content.add_widget(buttons_box)
         popup = Popup(title='Add New Project', content=popup_content, size_hint=(0.8, 0.4))
         popup.open()
@@ -475,7 +481,13 @@ class ProjectScreen(Screen):
 
     def rename_project(self, project):
         popup_content = BoxLayout(orientation='vertical', padding='10dp', spacing='10dp')
+
+        top_section = BoxLayout(orientation='vertical', size_hint_y=None, height='60dp')
         input_field = TextInput(text=project.name, multiline=False, size_hint_y=None, height='40dp')
+        top_section.add_widget(input_field)
+
+        spacer = Widget(size_hint_y=1)
+
         buttons_box = BoxLayout(size_hint_y=None, height='50dp')
         cancel_btn = Button(text='Cancel')
         cancel_btn.bind(on_press=lambda instance: popup.dismiss())
@@ -483,7 +495,9 @@ class ProjectScreen(Screen):
         rename_btn.bind(on_press=lambda instance: self.update_project_name(project, input_field.text, popup))
         buttons_box.add_widget(cancel_btn)
         buttons_box.add_widget(rename_btn)
-        popup_content.add_widget(input_field)
+
+        popup_content.add_widget(top_section)
+        popup_content.add_widget(spacer)
         popup_content.add_widget(buttons_box)
         popup = Popup(title='Rename Project', content=popup_content, size_hint=(0.8, 0.4))
         popup.open()
@@ -497,21 +511,85 @@ class ProjectScreen(Screen):
 
     def delete_project(self, project):
         app = App.get_running_app()
+
+        if len(app.projects) == 1:
+            popup_content = BoxLayout(orientation='vertical', padding='10dp', spacing='10dp')
+            message = Label(text='Cannot delete the last project', halign='center', valign='middle')
+            ok_btn = Button(text='OK', size_hint_y=None, height='50dp')
+            ok_btn.bind(on_press=lambda instance: popup.dismiss())
+
+            popup_content.add_widget(message)
+            popup_content.add_widget(ok_btn)
+
+            popup = Popup(title='Message', content=popup_content, size_hint=(0.8, 0.3))
+            popup.open()
+            return
+
+        popup_content = BoxLayout(orientation='vertical', padding='10dp', spacing='10dp')
+
+        top_section = BoxLayout(orientation='vertical', size_hint_y=None, height='80dp')
+        message = Label(text=f'Delete "{project.name}" project?',
+                        halign='center', valign='middle', markup=True)
+        top_section.add_widget(message)
+
+        spacer = Widget(size_hint_y=1)
+
+        buttons_box = BoxLayout(size_hint_y=None, height='50dp')
+        cancel_btn = Button(text='Cancel')
+        cancel_btn.bind(on_press=lambda instance: popup.dismiss())
+        delete_btn = Button(text='Delete')
+        delete_btn.bind(on_press=lambda instance: self.confirm_delete_project(project, popup))
+        buttons_box.add_widget(cancel_btn)
+        buttons_box.add_widget(delete_btn)
+
+        popup_content.add_widget(top_section)
+        popup_content.add_widget(spacer)
+        popup_content.add_widget(buttons_box)
+
+        popup = Popup(title='Confirm Delete', content=popup_content, size_hint=(0.8, 0.4))
+        popup.open()
+
+    def confirm_delete_project(self, project, popup):
+        popup.dismiss()  # Close the confirmation popup
+
+        app = App.get_running_app()
         if project in app.projects:
             app.projects.remove(project)
-            if project == self.manager.get_screen('main').current_project:
-                self.manager.get_screen('main').current_project = None
-                self.manager.get_screen('main').update_project_name()
+
+            main_screen = self.manager.get_screen('main')
+            if project == main_screen.current_project:
+                if app.projects:
+                    main_screen.current_project = app.projects[0]
+                else:
+                    main_screen.current_project = None
+                main_screen.update_project_name()
+
             app.save_data()
             self.update_projects_list()
-
 
 class MatrixScreen(Screen):
     current_project = ObjectProperty(None)
     matrix_id = StringProperty('')
     matrix_name = StringProperty('')
+    matrix_color = ListProperty([0, 0, 0, 1])
+
+    def __init__(self, **kwargs):
+        super(MatrixScreen, self).__init__(**kwargs)
+        self.bind(matrix_id=self.update_matrix_color)
+
+    def update_matrix_color(self, instance, value):
+        if value in MATRIX_COLORS:
+            original_color = MATRIX_COLORS[value]
+            darkened_color = [
+                original_color[0] * 0.3,
+                original_color[1] * 0.3,
+                original_color[2] * 0.3,
+                original_color[3]  # Keep alpha unchanged
+            ]
+            self.matrix_color = darkened_color
 
     def on_enter(self):
+        self.update_matrix_color(self, self.matrix_id)
         self.update_tasks_list()
         self.update_action_buttons()
 
@@ -556,8 +634,15 @@ class MatrixScreen(Screen):
 
     def add_task(self):
         popup_content = BoxLayout(orientation='vertical', padding='10dp', spacing='10dp')
+
+        top_section = BoxLayout(orientation='vertical', size_hint_y=None, height='160dp')
         name_input = TextInput(hint_text='Task name', multiline=False, size_hint_y=None, height='40dp')
         desc_input = TextInput(hint_text='Description', multiline=True, size_hint_y=None, height='100dp')
+        top_section.add_widget(name_input)
+        top_section.add_widget(desc_input)
+
+        spacer = Widget(size_hint_y=1)
+
         buttons_box = BoxLayout(size_hint_y=None, height='50dp')
         cancel_btn = Button(text='Cancel')
         cancel_btn.bind(on_press=lambda instance: popup.dismiss())
@@ -565,8 +650,9 @@ class MatrixScreen(Screen):
         add_btn.bind(on_press=lambda instance: self.create_task(name_input.text, desc_input.text, popup))
         buttons_box.add_widget(cancel_btn)
         buttons_box.add_widget(add_btn)
-        popup_content.add_widget(name_input)
-        popup_content.add_widget(desc_input)
+
+        popup_content.add_widget(top_section)
+        popup_content.add_widget(spacer)
         popup_content.add_widget(buttons_box)
         popup = Popup(title='Add New Task', content=popup_content, size_hint=(0.8, 0.6))
         popup.open()
@@ -661,9 +747,19 @@ class TaskScreen(Screen):
     def show_subtask_details(self, idx):
         subtask = self.subtasks[idx]
         popup_content = BoxLayout(orientation='vertical', padding='10dp', spacing='10dp')
+
+        # Top section with input fields
+        top_section = BoxLayout(orientation='vertical', size_hint_y=None, height='240dp')
         name_input = TextInput(text=subtask['name'], multiline=False, size_hint_y=None, height='40dp')
         desc_label = Label(text="Description:", halign='left', text_size=(None, None), size_hint_y=None, height='30dp')
         desc_input = TextInput(text=subtask.get('description', ''), multiline=True, size_hint_y=None, height='150dp')
+
+        top_section.add_widget(name_input)
+        top_section.add_widget(desc_label)
+        top_section.add_widget(desc_input)
+
+        spacer = Widget(size_hint_y=1)
+
         buttons_box = BoxLayout(size_hint_y=None, height='50dp')
         close_btn = Button(text='Close')
         close_btn.bind(on_press=lambda instance: popup.dismiss())
@@ -671,9 +767,9 @@ class TaskScreen(Screen):
         save_btn.bind(on_press=lambda instance: self.update_subtask(idx, name_input.text, desc_input.text, popup))
         buttons_box.add_widget(close_btn)
         buttons_box.add_widget(save_btn)
-        popup_content.add_widget(name_input)
-        popup_content.add_widget(desc_label)
-        popup_content.add_widget(desc_input)
+
+        popup_content.add_widget(top_section)
+        popup_content.add_widget(spacer)
         popup_content.add_widget(buttons_box)
         popup = Popup(title='Subtask', content=popup_content, size_hint=(0.8, 0.6))
         popup.open()
@@ -696,32 +792,32 @@ class TaskScreen(Screen):
     def edit_task(self):
         task_data = self.current_project.matrices[self.matrix_id]['tasks'][self.task_index]
         task = Task.from_dict(task_data)
-
         popup_content = BoxLayout(orientation='vertical', padding='10dp', spacing='10dp')
+
+        top_section = BoxLayout(orientation='vertical', size_hint_y=None, height='200dp')
         name_label = Label(text='Task Name:', size_hint_y=None, height='30dp', halign='left')
         name_input = TextInput(text=self.task_name, multiline=False, size_hint_y=None, height='40dp')
         desc_label = Label(text='Description:', size_hint_y=None, height='30dp', halign='left')
         desc_input = TextInput(text=self.task_description, multiline=True, size_hint_y=None, height='100dp')
-        completed_checkbox = CheckBox(active=task.completed)
-        completed_label = Label(text="Completed:", halign='left', text_size=(None, None), size_hint_y=None,
-                                height='30dp')
-        completed_box = BoxLayout(orientation='horizontal', size_hint_y=None, height='40dp')
-        completed_box.add_widget(completed_label)
-        completed_box.add_widget(completed_checkbox)
+
+        top_section.add_widget(name_label)
+        top_section.add_widget(name_input)
+        top_section.add_widget(desc_label)
+        top_section.add_widget(desc_input)
+
+        spacer = Widget(size_hint_y=1)
+
         buttons_box = BoxLayout(size_hint_y=None, height='50dp')
         cancel_btn = Button(text='Cancel')
         cancel_btn.bind(on_press=lambda instance: popup.dismiss())
         save_btn = Button(text='Save')
         save_btn.bind(
-            on_press=lambda instance: self.update_task(name_input.text, desc_input.text, completed_checkbox.active,
-                                                       popup))
+            on_press=lambda instance: self.update_task(name_input.text, desc_input.text, task.completed, popup))
         buttons_box.add_widget(cancel_btn)
         buttons_box.add_widget(save_btn)
-        popup_content.add_widget(name_label)
-        popup_content.add_widget(name_input)
-        popup_content.add_widget(desc_label)
-        popup_content.add_widget(desc_input)
-        popup_content.add_widget(completed_box)
+
+        popup_content.add_widget(top_section)
+        popup_content.add_widget(spacer)
         popup_content.add_widget(buttons_box)
         popup = Popup(title='Edit Task', content=popup_content, size_hint=(0.8, 0.6))
         popup.open()
@@ -744,8 +840,16 @@ class TaskScreen(Screen):
 
     def add_subtask(self):
         popup_content = BoxLayout(orientation='vertical', padding='10dp', spacing='10dp')
+
+        # Top section with input fields
+        top_section = BoxLayout(orientation='vertical', size_hint_y=None, height='160dp')
         name_input = TextInput(hint_text='Subtask name', multiline=False, size_hint_y=None, height='40dp')
         desc_input = TextInput(hint_text='Description', multiline=True, size_hint_y=None, height='100dp')
+        top_section.add_widget(name_input)
+        top_section.add_widget(desc_input)
+
+        spacer = Widget(size_hint_y=1)
+
         buttons_box = BoxLayout(size_hint_y=None, height='50dp')
         cancel_btn = Button(text='Cancel')
         cancel_btn.bind(on_press=lambda instance: popup.dismiss())
@@ -753,8 +857,9 @@ class TaskScreen(Screen):
         add_btn.bind(on_press=lambda instance: self.create_subtask(name_input.text, desc_input.text, popup))
         buttons_box.add_widget(cancel_btn)
         buttons_box.add_widget(add_btn)
-        popup_content.add_widget(name_input)
-        popup_content.add_widget(desc_input)
+
+        popup_content.add_widget(top_section)
+        popup_content.add_widget(spacer)
         popup_content.add_widget(buttons_box)
         popup = Popup(title='Add New Subtask', content=popup_content, size_hint=(0.8, 0.6))
         popup.open()
@@ -775,9 +880,9 @@ class TaskScreen(Screen):
 
     def delete_selected(self):
         subtasks_to_delete = []
-        for i, child in enumerate(self.ids.subtasks_list.children):
+        for child in self.ids.subtasks_list.children:
             if isinstance(child, SubtaskItem) and child.checkbox.active:
-                subtasks_to_delete.append(i)
+                subtasks_to_delete.append(child.index)  # Use the stored index, not the enumeration index
         for i in sorted(subtasks_to_delete, reverse=True):
             del self.subtasks[i]
         task = self.current_project.matrices[self.matrix_id]['tasks'][self.task_index]
@@ -785,7 +890,6 @@ class TaskScreen(Screen):
         App.get_running_app().save_data()
         self.update_subtasks_list()
         self.update_action_buttons()
-
 
 class SummaryScreen(Screen):
     current_project = ObjectProperty(None)
@@ -863,10 +967,11 @@ class SummaryScreen(Screen):
 
 class EisenApp(App):
     projects = ListProperty([])
-    data_file = 'eisen.json'
+    data_file = StringProperty('')
     icon = 'logo.png'
 
     def build(self):
+        self.data_file = os.path.join(self.user_data_dir, 'eisen.json')
         self.load_data()
         sm = ScreenManager()
         sm.add_widget(MainMenuScreen(name='main'))
@@ -874,23 +979,50 @@ class EisenApp(App):
         sm.add_widget(MatrixScreen(name='matrix'))
         sm.add_widget(TaskScreen(name='task'))
         sm.add_widget(SummaryScreen(name='summary'))
+
+        sm.current = 'main'
+
+        if platform == 'android':
+            from kivy.core.window import Window
+            Window.bind(on_keyboard=self._handle_back_button)
+
         return sm
 
+    def on_start(self):
+        if platform not in ('android', 'ios'):
+            Clock.schedule_once(self._set_desktop_window)
+
+    def _set_desktop_window(self, dt):
+        Config.set('graphics', 'width', '360')
+        Config.set('graphics', 'height', '640')
+        Window.size = (360, 640)
+
+    def _handle_back_button(self, window, key, *args):
+        if key == 27:  # Back button
+            self.root.current = 'main'
+            return True
+        return False
+
     def load_data(self):
-        if os.path.exists(self.data_file):
-            try:
+        try:
+            if os.path.exists(self.data_file):
                 with open(self.data_file, 'r') as f:
                     data = json.load(f)
                     self.projects = [Project.from_dict(p) for p in data]
-            except Exception as e:
-                print(f"Error loading data: {e}")
+            else:
                 self.projects = [Project("Default Project")]
-        else:
+                self.save_data()
+        except Exception as e:
+            print(f"Error loading data: {e}")
             self.projects = [Project("Default Project")]
-            self.save_data()
+            try:
+                self.save_data()
+            except Exception as save_e:
+                print(f"Error saving default data: {save_e}")
 
     def save_data(self):
         try:
+            os.makedirs(os.path.dirname(self.data_file), exist_ok=True)
             with open(self.data_file, 'w') as f:
                 json.dump([p.to_dict() for p in self.projects], f)
         except Exception as e:
